@@ -4,10 +4,14 @@ session_start();
 // Initialize session variables
 $_SESSION['logged_in'] = isset($_SESSION['logged_in']) ? $_SESSION['logged_in'] : false;
 $_SESSION['username'] = isset($_SESSION['username']) ? $_SESSION['username'] : '';
+$_SESSION['user_id'] = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
 
 // Simulated user storage (in session for simulation)
 if (!isset($_SESSION['users'])) {
-    $_SESSION['users'] = [];
+    $_SESSION['users'] = []; // Stores username => ['password' => $hash, 'user_id' => $id]
+}
+if (!isset($_SESSION['users_meta'])) {
+    $_SESSION['users_meta'] = []; // Stores username => ['user_id' => $id] (legacy or could be combined)
 }
 
 // Handle login
@@ -15,9 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
     $password = $_POST['password'];
     
-    if (isset($_SESSION['users'][$username]) && $_SESSION['users'][$username] === $password) {
+    // Check if user exists and password is correct
+    if (isset($_SESSION['users'][$username]) && password_verify($password, $_SESSION['users'][$username]['password'])) {
         $_SESSION['logged_in'] = true;
         $_SESSION['username'] = $username;
+        $_SESSION['user_id'] = $_SESSION['users'][$username]['user_id']; // Store user_id in session
         header("Location: index.php");
         exit;
     } else {
@@ -29,14 +35,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
     $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
-    $password = $_POST['password'];
+    $password = $_POST['password']; // Raw password
     
     if (isset($_SESSION['users'][$username])) {
         $error = "Username already taken";
     } else {
-        $_SESSION['users'][$username] = $password;
+        // Generate a new user_id
+        $new_user_id = count($_SESSION['users_meta']) + 1; 
+        // Store user metadata (though user_id is also in 'users' array, this demonstrates the concept)
+        $_SESSION['users_meta'][$username] = ['user_id' => $new_user_id, 'email' => $email];
+        
+        // Hash the password for storage
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        
+        // Store user details including the hashed password and user_id
+        $_SESSION['users'][$username] = ['password' => $hashed_password, 'user_id' => $new_user_id];
+        
+        // Log the new user in
         $_SESSION['logged_in'] = true;
         $_SESSION['username'] = $username;
+        $_SESSION['user_id'] = $new_user_id; // Store new user_id in session
         header("Location: index.php");
         exit;
     }
@@ -59,6 +77,10 @@ if (isset($_GET['logout'])) {
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        const USER_IS_LOGGED_IN = <?php echo json_encode(isset($_SESSION['logged_in']) && $_SESSION['logged_in']); ?>;
+        const USER_ID = <?php echo json_encode($_SESSION['user_id'] ?? null); ?>;
+    </script>
 </head>
 <body>
     <!-- Splash Screen -->
@@ -208,6 +230,14 @@ if (isset($_GET['logout'])) {
                                     <i class="fas fa-plus"></i> Add More Skill
                                 </button>
                             </form>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1rem; margin-bottom: 1rem;">
+                            <label for="resume-template-select" style="font-weight: 500;">Resume Template:</label>
+                            <select id="resume-template-select" name="resume_template" class="form-control" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 0.25rem;">
+                                <option value="classic">Classic</option>
+                                <option value="modern">Modern</option>
+                            </select>
                         </div>
 
                         <div class="action-buttons">
